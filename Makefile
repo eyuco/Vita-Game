@@ -1,7 +1,7 @@
 
 TITLE_ID = VITA2DTST
 TARGET   = vita2dsample
-OBJS     = main.o graphics/chars/bodies/base/legs_idle_24x24.o image.o bullet.o zombie.o
+OBJS     = main.o graphics/chars/bodies/base/legs_idle_24x24.o image.o bullet.o zombie.o image1.o image2.o target.o tileset.o vec.o
 
 LIBS = -lvita2d -lSceDisplay_stub -lSceGxm_stub \
 	-lSceSysmodule_stub -lSceCtrl_stub -lScePgf_stub -lScePvf_stub \
