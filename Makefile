@@ -1,7 +1,7 @@
 
 TITLE_ID = VITA2DTST
 TARGET   = vita2dsample
-OBJS     = font.o main.o gMenu.o graphics/chars/bodies/base/legs_idle_24x24.o image.o bullet.o zombie.o image1.o image2.o target.o tileset.o bg.o blocks.o cursor.o menuBG.o write_read.o util.o  \
+OBJS     = font.o main.o gMenu.o graphics/chars/bodies/base/legs_idle_24x24.o image.o bullet.o zombie.o image1.o image2.o target.o tileset.o bg.o blocks.o cursor.o menuBG.o icon.o levelcursor.o write_read.o util.o gMenu.o vec.o \
 		Nogg/src/util/memory.o \
 		Nogg/src/util/float-to-int16.o \
 		Nogg/src/util/decode-frame.o \
@@ -27,9 +27,9 @@ OBJS     = font.o main.o gMenu.o graphics/chars/bodies/base/legs_idle_24x24.o im
 				
 LIBS += -lSceDisplay_stub
 
-LIBS = -lvita2d -lSceDisplay_stub -lSceGxm_stub \
+LIBS = -lvita2d -lSceDisplay_stub -lSceTouch_stub -lSceGxm_stub \
 	-lSceSysmodule_stub -lSceAudio_stub -lSceCtrl_stub -lScePgf_stub -lScePvf_stub \
-	-lSceCommonDialog_stub  -lSceAudioIn_stub -lSceAudiodec_stub -lfreetype -lpng -ljpeg -lz  -lc -lSceAppMgr_stub -lsoloud -lvorbis -lvorbisenc -logg -lvorbisfile -lm  -lmad
+	-lSceCommonDialog_stub  -lSceAudioIn_stub -lSceAudiodec_stub -ltinyxml2 -lfreetype -lpng -ljpeg -lz  -lc -lSceAppMgr_stub -lsoloud -lvorbis -lvorbisenc -logg -lvorbisfile -lm  -lmad
 
 PREFIX  = arm-vita-eabi
 CC      = $(PREFIX)-gcc

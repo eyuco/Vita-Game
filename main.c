@@ -9,11 +9,14 @@
 //#include "actors.h"
 #include <psp2/ctrl.h>
 #include <psp2/kernel/processmgr.h>
+#include <psp2/touch.h>
 #include <stdbool.h>
 #include <vita2d.h>
 #include <vorbis/codec.h>
 #include <vorbis/vorbisenc.h>
 #include "gMenu.h"
+#include "grid.h"
+#include "level.h"
 #include "util.h"
 #include "write_read.h"
 #include <vorbis/vorbisfile.h>
@@ -22,26 +25,14 @@
 #include <psp2/audiodec.h> 
 #include <mad.h>
 #include "Audio.h"
-//#include <psp2/kernel/threadmgr.h>
-//#include <psp2/kernel/processmgr.h>
-//#include "debugScreen.h"
 
 #define PLAYER_SPEED          4
-#define PLAYER_BULLET_SPEED   16
-//#define WALKING_ANIMATION_FRAMES  2
+
 #define DATA_LEN        2048
 #define SCE_AUDIODEC_MP3_MAX_STREAMS 8
 #define MAX(a,b)        ((a) > (b) ? (a) : (b))
 #define BUFFER_SIZE   32768
 
-typedef double (*wav_gen)(double);
-
-void wave_set(int16_t*buffer, size_t size,  wav_gen generator){
-	for (size_t smpl = 0; smpl < size; ++smpl)
-		buffer[smpl] = 0x7FFF*generator((float)smpl/(float)size);
-}
-
-static int check_output (const float * data_in, unsigned len, float allowable);
 
 /*
  * Symbol of the image.png file
@@ -58,20 +49,27 @@ static int check_output (const float * data_in, unsigned len, float allowable);
  * draw box in level area:DONE
  * add target boxes: Done
  * draw start menu:DONElook at lazyfoo game states tut
- * organize code
+ * organize code:DONE
  *need to center menu text:DONE
- *Draw level select screen
+ *Draw level select screen:DONE
+ *Work on levels:
+ *level options:restart level,exit and go back to level menu
+ *finish menus:HALF DONE need to fix level menu
+ *in-game menu:Not needed
+ *pause:
+ *pause left right movement of select menu while state is play:DONE
+ *test for x in level menu state:DONE 
  */
 extern unsigned char _binary_image_png_start;
 extern unsigned char _binary_player1_png_start;
-extern unsigned char _binary_bullet_png_start;
+
 extern unsigned char _binary_zombie_png_start;
 extern unsigned char _binary_image1_png_start;
 extern unsigned char _binary_image2_png_start;
 extern unsigned char _binary_target_png_start;
-extern unsigned char _binary_tileset_png_start;
+//extern unsigned char _binary_tileset_png_start;
 extern unsigned char _binary_bg_png_start;
-extern unsigned char _binary_blocks_png_start;
+//extern unsigned char _binary_blocks_png_start;
 
 AudioHandler _audio;
 bool isFacingUp = false;
@@ -81,49 +79,42 @@ bool isFacingDown = false;
 bool state_Menu = false;
 bool state_Game = false;
 
-
 bool paused;
-
+/*
 enum GAME_STATE
 {
     STATE_MENU,
+    STATE_LEVEL_MENU,
     STATE_PLAY
+
 };
 enum GAME_STATE currentState;
-
-
-//int currentIndex = 0;
-void updateCursorPosition();
+*/
 void joyEventHandler(int joy, int changed, int state);
-//void moveUp();
-void moveDown();
-void Select(int Option);
 
-void setTexturePosition(vita2d_texture *sprite);
 void initPlayer();
-void fireBullet();
-void updateTexture();
- int vita2d_texture_set_width(const vita2d_texture *texture,int w,int h);
- void drawLevelLayer();
-struct Bullets {   // Structure declaration
-  float bulPosX;           // Member (int variable)
-  float bulletSpeed;       // Member (char variable)
-};
 
+void updateTexture();
+int port,i;
+void checkTouch(SceTouchData touch);
 bool check_collision( struct Entity A, struct Entity B );
-float getTexturePosition(vita2d_texture *entity);
 struct Entity player;
 struct Entity box;
+struct Entity box2;
+struct Entity targe;
+struct Entity target2;
 struct Entity collider;
 struct Entity goal;
 struct Entity gSpriteClips[WALKING_ANIMATION_FRAMES];
 struct Entity tile;
 struct Entity columns;
-//struct Entity gfx_Cursor;
-//struct Entity menu_Bg;
+struct Entity lvl3Columns[10];
+struct Entity touchCollider;
+
+
+
 int frame = 0;
-//vita2d_texture *cursor;
-//vita2d_texture *menu_BG;
+
 float bulPosX;
 	float bulPosY;
 	vita2d_pgf *pgf;
@@ -134,12 +125,12 @@ int main(int argc, char** argv)
 	//vita2d_pgf *pgf;
 	vita2d_pvf *pvf;
 	vita2d_texture *image;
-	vita2d_texture *bullet[10];
+	
 	vita2d_texture *zombie[10];
 	vita2d_texture *target[10];
-    vita2d_texture *tileset[27];
+   // vita2d_texture *tileset[27];
 	vita2d_texture *bg;
-	vita2d_texture *blocks[10];
+	//vita2d_texture *blocks[10];
 	//vita2d_texture *cursor;
   //test
 #define OGG_IMPL
@@ -149,32 +140,52 @@ int main(int argc, char** argv)
 	menuState = true;
 	currentState = STATE_MENU;
 
-	//vita2d_texture_vertex pos;
-	float rad = 0.0f;
-	int grid_cell_size = 36;
-    int grid_width = 960;
-    int grid_height = 544;
+	         column[0] = 0;
+			 column[1] = 0 + grid_cell_size;
+			 column[2] = column[1] + grid_cell_size;
+			 column[3] = column[2] + grid_cell_size;
+			 column[4] = column[3] + grid_cell_size;
+			 column[5] = column[4] + grid_cell_size;
+			 column[6] = column[5] + grid_cell_size;
+			 column[7] = column[6] + grid_cell_size;
+			 column[8] = column[7] + grid_cell_size;
+			 column[9] = column[8] + grid_cell_size;
+			 column[10] = column[9] + grid_cell_size;
+			 column[11] =  column[10] +grid_cell_size;
+			 column[12] = column[11] + grid_cell_size;
+			 column[13] = column[12] + grid_cell_size;
+			 column[14] = column[13] + grid_cell_size;
+			 column[15] = column[14] + grid_cell_size;
+			 column[16] = column[15] + grid_cell_size;
+			 column[17] = column[16] + grid_cell_size;
+			 column[18] = column[17] + grid_cell_size;
+			 column[19] = column[18] + grid_cell_size;
+			 column[20] = column[19] + grid_cell_size;
+			 column[21] = column[20] + grid_cell_size;
+			 column[22] = column[21] + grid_cell_size;
+			 column[23] = column[22] + grid_cell_size;
+			 column[24] = column[23] + grid_cell_size;
+			 column[25] = column[24] + grid_cell_size;
+			 column[26] = column[25] + grid_cell_size;
+
+
+
+
+
+	//test
 	 int window_width = (grid_width * grid_cell_size) + 1;
     int window_height = (grid_height * grid_cell_size) + 1;
-struct grid_cursor {
-      int  x ;
-       int y ;
-       int w;
-       int h;
-    };
-         struct grid_cursor grid;
+
+        // struct grid_cursor grid;
 	    grid.x = (grid_width - 1) / 2 * grid_cell_size;
         grid.y = (grid_height - 1) / 2 * grid_cell_size;
         grid.w = grid_cell_size;
         grid.h = grid_cell_size;
-		//struct grid_cursor_ghost = {grid.x, grid.y, grid_cell_size,
-     
-//struct Entity currentClip = gSpriteClips[frame/4];
-	//pos.x = 0.0f;
-        int column[30];
+		
+      
 	player.dx = 5;//45
-     player.x = 940/2 + grid_cell_size;
-	 player.y = 544/2 + grid_cell_size;
+     player.x = column[15];//935/2 + grid_cell_size;//940
+	 player.y = column[9];//540/2 + grid_cell_size;
 	 player.w = 27.0f;
 	 player.h = 33.0f;
 	 box.y = 500; //+ grid_cell_size;//920/2;
@@ -185,25 +196,81 @@ struct grid_cursor {
 	 box.h = 45;
 	 gfx_Cursor.x = options[currentIndex].x-15;
      gfx_Cursor.y = options[currentIndex].y-10;
-    menu_Bg.w = 740.0f;
+     gfx_Cursor.w = 8.0f;
+     gfx_Cursor.h = 8.0f;
+    menu_Bg.w = 1190.0f;
     menu_Bg.h = 740.0f;
+    icons.x = 134;
+    icons.y = 164;
+    icons.w = 91;
+    icons.h = 94;
+    level_Bg.w = 1190.0f;//740
+    level_Bg.h = 740.f;
+    level_cursor.x = levelList[currentSelection].x;
+    level_cursor.y = levelList[currentSelection].y;//15
+    level_cursor.w = 91;
+    level_cursor.h = 94;
+    
 
+     //boxes
+	 goal.x = column[13];//940/2 + grid_cell_size;
+	 goal.y = column[7];//444/2 + grid_cell_size;
+	 goal.w = 27.0f;
+	 goal.h = 33.0f;//45
 
-	 goal.x = 940/2 + grid_cell_size;
-	 goal.y = 544/2 + grid_cell_size;
-	 goal.w = 46;
-	 goal.h = 45;
+     box2.x = column[15];//940/2 + grid_cell_size;
+	 box2.y = column[7];//444/2 + grid_cell_size;
+	 box2.w = 27.0f;
+	 box2.h = 33.0f;//45
+     
+     targe.x = column[14];//940/2 + grid_cell_size;
+	 targe.y = column[9];//444/2 + grid_cell_size;
+	 targe.w = 27.0f;
+	 targe.h = 33.0f;//45
+
+     target2.x = column[15];//940/2 + grid_cell_size;
+	 target2.y = column[9];//444/2 + grid_cell_size;
+	 target2.w = 27.0f;
+	 target2.h = 33.0f;
 
 	 tile.x = 1.0f;
 	 tile.y = 0.0f;
 	 tile.w = 35.0f;
 	 tile.h = 37.0f;
 
-	// columns.x = 1.0f;
-	 //columns.y = 0.0f;
+	
 	 columns.w = 35.0f;
 	 columns.h = 37.0f;
 
+     lvl3Columns[0].x = column[3];//940/2 + grid_cell_size;
+	 lvl3Columns[0].y = column[8];//444/2 + grid_cell_size;
+	 lvl3Columns[0].w = 27.0f;
+	 lvl3Columns[0].h = 33.0f;
+
+     lvl3Columns[1].x = column[4];//940/2 + grid_cell_size;
+	 lvl3Columns[1].y = column[8];//444/2 + grid_cell_size;
+	 lvl3Columns[1].w = 27.0f;
+	 lvl3Columns[1].h = 33.0f;
+      
+      lvl3Columns[2].x = column[4];//940/2 + grid_cell_size;
+	  lvl3Columns[2].y = column[7];//444/2 + grid_cell_size;
+	  lvl3Columns[2].w = 27.0f;
+	  lvl3Columns[2].h = 33.0f;
+
+     lvl3Columns[3].x = column[4];//940/2 + grid_cell_size;
+	  lvl3Columns[3].y = column[6];//444/2 + grid_cell_size;
+	  lvl3Columns[3].w = 27.0f;
+	  lvl3Columns[3].h = 33.0f; 
+     
+     lvl3Columns[4].x = column[5];//940/2 + grid_cell_size;
+	  lvl3Columns[4].y = column[6];//444/2 + grid_cell_size;
+	  lvl3Columns[4].w = 27.0f;
+	  lvl3Columns[4].h = 33.0f;
+
+      lvl3Columns[5].x = column[6];//940/2 + grid_cell_size;
+	  lvl3Columns[5].y = column[6];//444/2 + grid_cell_size;
+	  lvl3Columns[5].w = 27.0f;
+	  lvl3Columns[5].h = 33.0f;
 
 
 	 /*
@@ -238,8 +305,6 @@ struct Entity currentTile = tile;
 
 	InitializeAudio(&_audio);
  
-	//gen=gen_tri;
-//LoadOgg(&_audio, "Sounds/music.ogg", AUDIO_OUT_BGM,0);
   LoadWav(&_audio, "Sounds/music.wav", AUDIO_OUT_MAIN,0);
 
 
@@ -257,45 +322,42 @@ float enemyPosY = 544/2;
 	//image = vita2d_load_PNG_buffer(&_binary_image_png_start);
 	zombie[0] = vita2d_load_PNG_buffer(&_binary_zombie_png_start);
 	zombie[1] = vita2d_load_PNG_buffer(&_binary_zombie_png_start);
-	bullet[0] = vita2d_load_PNG_buffer(&_binary_bullet_png_start);
+	
    player.image[0] = vita2d_load_PNG_buffer(&_binary_image_png_start);
    player.image[1] = vita2d_load_PNG_buffer(&_binary_image1_png_start);
    player.image[2] = vita2d_load_PNG_buffer(&_binary_image2_png_start);
    target[0] = vita2d_load_PNG_buffer(&_binary_target_png_start);
    target[1] = vita2d_load_PNG_buffer(&_binary_target_png_start);
    //blocks = vita2d_load_PNG_buffer(&_binary_blocks_png_start);
-   blocks[0] = vita2d_load_PNG_buffer(&_binary_blocks_png_start);
-   blocks[1] = vita2d_load_PNG_buffer(&_binary_blocks_png_start);
-   blocks[2] = vita2d_load_PNG_buffer(&_binary_blocks_png_start);
-   blocks[3] = vita2d_load_PNG_buffer(&_binary_blocks_png_start);
-   blocks[4] = vita2d_load_PNG_buffer(&_binary_blocks_png_start);
-   blocks[5] = vita2d_load_PNG_buffer(&_binary_blocks_png_start);
-   blocks[6] = vita2d_load_PNG_buffer(&_binary_blocks_png_start);
-
-
-   tileset[0] = vita2d_load_PNG_buffer(&_binary_tileset_png_start);
-   tileset[1] = vita2d_load_PNG_buffer(&_binary_tileset_png_start);
-   tileset[2] = vita2d_load_PNG_buffer(&_binary_tileset_png_start);
-   tileset[3] = vita2d_load_PNG_buffer(&_binary_tileset_png_start);
-   tileset[4] = vita2d_load_PNG_buffer(&_binary_tileset_png_start);
-   tileset[5] = vita2d_load_PNG_buffer(&_binary_tileset_png_start);
-   tileset[6] = vita2d_load_PNG_buffer(&_binary_tileset_png_start);
-   tileset[7] = vita2d_load_PNG_buffer(&_binary_tileset_png_start);
-   tileset[8] = vita2d_load_PNG_buffer(&_binary_tileset_png_start);
-   tileset[9] = vita2d_load_PNG_buffer(&_binary_tileset_png_start);
-   tileset[10] = vita2d_load_PNG_buffer(&_binary_tileset_png_start);
-
+   
+   
+   loadTileBuffers();
+   
 menu_BG = vita2d_load_PNG_buffer(&_binary_menuBG_png_start);
 cursor = vita2d_load_PNG_buffer(&_binary_cursor_png_start);
-  // int w = vita2d_texture_get_width(player.image[0]);
-bg = vita2d_load_PNG_buffer(&_binary_bg_png_start);
-//int column[30];
+level_Select = vita2d_load_PNG_buffer(&_binary_bg_png_start);
+level_Cursor = vita2d_load_PNG_buffer(&_binary_levelcursor_png_start);
+sceTouchSetSamplingState(SCE_TOUCH_PORT_FRONT, 1);
+	sceTouchEnableTouchForce(SCE_TOUCH_PORT_FRONT);
+SceTouchData touch_old[SCE_TOUCH_PORT_MAX_NUM];
+	SceTouchData touch[SCE_TOUCH_PORT_MAX_NUM];
+	//int port,i;
+//test
+touchCollider.w = 35.0f;
+	 touchCollider.h = 37.0f;
+
+
 	memset(&pad, 0, sizeof(pad));
 unsigned char buf[4096];
 	while (1) {
 		sceCtrlPeekBufferPositive(0, &pad, 1);
+        memcpy(touch_old, touch, sizeof(touch_old));
+        sceCtrlPeekBufferPositive(0, &touch, 1);
+     //int port,i;
+     //test
 
-     
+
+//test
         switch(currentState){
             case STATE_MENU:{
                // menuLoop();
@@ -303,12 +365,27 @@ unsigned char buf[4096];
                 //processStateMenu();
                 break;
             }
+             case STATE_LEVEL_MENU:{
+               // menuLoop();
+                int i = 0;
+                //levelSelectLoop();
+                hideText(pgf);
+                //levelSelectLoop();
+                //processStateMenu();
+                break;
+            }
             case STATE_PLAY:{
                 //processStatePlay();
                 //pickStart();
+
                 break;
             }
+        case STATE_EXIT:{
+        	//hideText(pgf);
+        	break;
         }
+       
+       }
 
 
 
@@ -386,14 +463,19 @@ unsigned char buf[4096];
 			player.x += grid_cell_size;
 			bulPosX += 5;
 			columns.x = column[16];
-			//box.x = column[14];
-			//box.y = column[7];
-			//run moving sprite
+			//selectorMoveRight();
+			 //level_cursor.x += 100;
 			if(check_collision(player,goal))
        {
 
 			goal.x += grid_cell_size;
         }
+       if(check_collision(player,box2))
+       {
+
+			box2.x += grid_cell_size;
+        }
+
 
 			//vita2d_draw_texture_rotate(image, 940/2, 544/2, rad);
 			//break;
@@ -405,18 +487,21 @@ unsigned char buf[4096];
 			isFacingRight = false;
 			isFacingUp = false;
 
-			player.x -= grid_cell_size;
+			player.x -= grid_cell_size;//-=
 			bulPosX -= 5;
 			columns.x = column[7];
 			//run moving sprite
+			//selectorMoveLeft();
 			if(check_collision(player,goal) )//player.x < 0 || player.x > 944
        {
-        // player.x = player.x;
-		   //move box
-            //player.x += player.dx;
+        
 			goal.x -= grid_cell_size;
         }
-
+         if(check_collision(player,box2) )//player.x < 0 || player.x > 944
+       {
+        
+			box2.x -= grid_cell_size;
+        }
 
 			//vita2d_draw_texture_rotate(image, 940/2, 544/2, rad);
 			//break;
@@ -434,12 +519,14 @@ unsigned char buf[4096];
 			bulPosY = player.y;
 			if(check_collision(player,goal) )//player.x < 0 || player.x > 944
        {
-        // player.x = player.x;
-		   //move box
-            //player.x += player.dx;
-			goal.y -= grid_cell_size;
+       
+			goal.y -= grid_cell_size/1;
         }
-
+         if(check_collision(player,box2) )//player.x < 0 || player.x > 944
+       {
+       
+			box2.y -= grid_cell_size/1;
+        }
 
 			//vita2d_draw_texture_rotate(image, 940/2, 544/2, rad);
 			//break;
@@ -456,29 +543,78 @@ unsigned char buf[4096];
 			columns.y = column[10];
 			//bulPosY += 10;
 			bulPosY = player.y;
-            moveDown();
+            cursorDown();
 
 			if(check_collision(player,goal) )//player.x < 0 || player.x > 944
        {
-        // player.x = player.x;
-		   //move box
-            //player.x += player.dx;
+        
 			goal.y += grid_cell_size;
         }
+         if(check_collision(player,box2) )//player.x < 0 || player.x > 944
+       {
         
+			box2.y += grid_cell_size;
+        }
+
+
 		}
-        if (pad.buttons & SCE_CTRL_CROSS)
+        if (pad.buttons & SCE_CTRL_CIRCLE)//CIRCLE
 		{
-            //fireBullet();
-          
+            
 			//vaudio_play_music_ogg( snd_mysound, "resources/sokoban.ogg" );
 			PlayAudio(&_audio);
+			//start leve
+			/*level_Bg.w = 0;
+            level_Bg.h = 0;
+            level_cursor.w = 0;
+            level_cursor.h = 0;*/
+            //Select(currentIndex);
+            
+			//Select_Level(currentIndex);
+			//currentState = STATE_PLAY;
 			
-			//vita2d_draw_texture_rotate(image, 940/2, 544/2, rad);
-			//break;}
 		}
-       
+      /* if(currentState == STATE_PLAY && pad.buttons & SCE_CTRL_START)
+       {
+       	showText();
+       }*/
+		/*if(currentState == STATE_MENU)
+		{
+			drawMenu();
+		}*/
+		if(currentState == STATE_PLAY)
+		{
+			//load level
+			//break;
+            level_Bg.w = 0.0f;
+            level_Bg.h = 0.0f;
+            level_cursor.w = 0.0f;
+            level_cursor.h = 0.0f;
 
+
+		}
+		/*if(currentState == STATE_LEVEL_MENU)
+		{
+			menu_Bg.w = 0.0f;
+             menu_Bg.h = 0.0f;
+             gfx_Cursor.w = 0.0f;
+             gfx_Cursor.h = 0.0f;
+             hideText(pgf);
+             if (pad.buttons & SCE_CTRL_CIRCLE)
+		{
+             //sceKernelDelayThread(3000000);
+             Select_Level(currentIndex);
+		}
+           if (pad.buttons & SCE_CTRL_LTRIGGER)
+		{
+            currentState = STATE_MENU;
+		}
+
+		}*/
+        if(currentState == STATE_EXIT)
+        {
+        	break;
+        }
 		if (pad.buttons & SCE_CTRL_START)
 		{  // pos.x += 10;
 			//break;
@@ -488,96 +624,91 @@ unsigned char buf[4096];
            Select(currentIndex);
              menu_Bg.w = 0.0f;
              menu_Bg.h = 0.0f;
-			//vita2d_free_texture(menu_BG);
+             gfx_Cursor.w = 0.0f;
+             gfx_Cursor.h = 0.0f;
+             //levelSelectState = true;
+             //currentState = STATE_LEVEL_MENU;
+
+			
 		}
 		//test
         sceKernelDelayThread(120000);
 		vita2d_start_drawing();
 		vita2d_clear_screen();
 
-        //vita2d_start_drawing();
-		//vita2d_draw_rectangle(20, 20, 400, 250, RGBA8(255, 0, 0, 255));
-		//vita2d_draw_rectangle(680, 350, 100, 150, RGBA8(0, 0, 255, 255));
-		//vita2d_draw_fill_circle(200, 420, 100, RGBA8(0, 255,0 ,255));
-
-		//vita2d_draw_texture_rotate(image, 940/2, 544/2, rad);
-
-        vita2d_draw_texture(bg, 100, 0);
         
-        //vita2d_draw_texture(zombie, box.x, box.y);
+
+		
+         //draw the grid 
+
+         if(currentState == STATE_PLAY && currentLevel == LEVEL_TUT)
+          {
+
+         if (pad.buttons & SCE_CTRL_CIRCLE)
+		{
+            currentState = STATE_LEVEL_MENU;
+            
+
+		}
+        
 
 
-
-			// int column[30];
-			 column[0] = 0;
-			 column[1] = 0 + grid_cell_size;
-			 column[2] = column[1] + grid_cell_size;
-			 column[3] = column[2] + grid_cell_size;
-			 column[4] = column[3] + grid_cell_size;
-			 column[5] = column[4] + grid_cell_size;
-			 column[6] = column[5] + grid_cell_size;
-			 column[7] = column[6] + grid_cell_size;
-			 column[8] = column[7] + grid_cell_size;
-			 column[9] = column[8] + grid_cell_size;
-			 column[10] = column[9] + grid_cell_size;
-			 column[11] =  column[10] +grid_cell_size;
-			 column[12] = column[11] + grid_cell_size;
-			 column[13] = column[12] + grid_cell_size;
-			 column[14] = column[13] + grid_cell_size;
-			 column[15] = column[14] + grid_cell_size;
-			 column[16] = column[15] + grid_cell_size;
-			 column[17] = column[16] + grid_cell_size;
-			 column[18] = column[17] + grid_cell_size;
-			 column[19] = column[18] + grid_cell_size;
-			 column[20] = column[19] + grid_cell_size;
-			 column[21] = column[20] + grid_cell_size;
-			 column[22] = column[21] + grid_cell_size;
-			 column[23] = column[22] + grid_cell_size;
-			 column[24] = column[23] + grid_cell_size;
-			 column[25] = column[24] + grid_cell_size;
-			 column[26] = column[25] + grid_cell_size;
-
-
-         //draw the grid     1
-         //draw other objects after tileset
-         
          for (int x = 0; x < 1 + grid_width * grid_cell_size;
              x += grid_cell_size) {
-            //int y = grid_height += grid_cell_size;
-
-           
-           //put tileset in array
+         
 			 //adjust these tiles for level layout like add something to x
 			 //level 1 should be an easy level
-            //this could be the level space and the background can be drawn as normal texture
-            // vita2d_draw_texture(tileset[0], x, 0);//x,0
-             //vita2d_draw_texture(tileset[0], x, 0 + grid_cell_size);
-			 //vita2d_draw_texture(tileset[0], x, column[2]);
-			// vita2d_draw_texture(tileset[0], x, column[3]);
-            
+           
 			 vita2d_draw_texture(tileset[0], x, column[4]); //+x 4
 
-             //vita2d_draw_texture(tileset[1], x, column[5]);
              //with this i can draw the collision boxes anywhere on the level area
 			 vita2d_draw_texture(tileset[1], x, column[5]);
 			 vita2d_draw_texture(tileset[2], x, column[6]);
 			 vita2d_draw_texture(tileset[3], x, column[7]);
 			 vita2d_draw_texture(tileset[4], x, column[8]);
 			 vita2d_draw_texture(tileset[5], x, column[9]);//point
-			 //vita2d_draw_texture(tileset[6], x, column[10]);
-             //vita2d_draw_texture(tileset[7], x, column[11]);
-			 //vita2d_draw_texture(tileset[8], x, column[9]);//point
-			 //vita2d_draw_texture(tileset[9], x, column[10]);
-             //vita2d_draw_texture(tileset[10], x, column[11]);
-             //vita2d_draw_texture(blocks[0], 1 + grid_cell_size, column[10]);//x 11
-			 vita2d_draw_texture(blocks[0], x, column[10]);
-			 vita2d_draw_texture(blocks[0], x, column[3]);
+			
+			 vita2d_draw_texture(blocks[0], x, column[10]);//10
+			 vita2d_draw_texture(blocks[0], x, column[3]);//3
              //vita2d_draw_texture(blocks[1], 2 + grid_cell_size, column[11]);
-			 columns.x = x;
-             //box.x = x;
+			 columns.x = x; //+ grid_cell_size;
+             
 			 if(isFacingUp){
+            //test this
+			 	columns.y = column[2];//2
+            if(check_collision(goal,columns))
+            {
+            	goal.y += grid_cell_size;
+               if(check_collision(player,goal))
+				 {
 
+                 player.y += grid_cell_size;
+				}
 
+            }
+            if(check_collision(goal,box2))
+            {
+            	goal.y += grid_cell_size;
+            	if(check_collision(player,goal))
+				 {
+
+                 player.y += grid_cell_size;
+				}
+
+            }
+			 //box2
+             if(check_collision(box2,columns))
+            {
+            	box2.y += grid_cell_size;
+               if(check_collision(player,box2))
+				 {
+
+                 player.y += grid_cell_size;
+				}
+
+            }
+
+            //box2
 			 if(check_collision(player,columns))
 				 {
 
@@ -591,6 +722,41 @@ unsigned char buf[4096];
              /*if(check_collision(player,box)){
              	player.y -= grid_cell_size;
              }*/
+             	columns.y = column[10];
+              if(check_collision(goal,columns))
+            {
+            	goal.y -= grid_cell_size;
+               if(check_collision(player,goal))
+				 {
+
+                 player.y -= grid_cell_size;
+				}
+
+            }
+            //box2
+            if(check_collision(box2,columns))
+            {
+            	box2.y -= grid_cell_size;
+               if(check_collision(player,box2))
+				 {
+
+                 player.y -= grid_cell_size;
+				}
+
+            }
+            if(check_collision(goal,box2))
+            {
+            	goal.y -= grid_cell_size;
+            	if(check_collision(player,goal))
+				 {
+
+                 player.y -= grid_cell_size;
+				}
+
+            }
+
+
+            //box2
 			 if(check_collision(player,columns))
 				 {
 
@@ -624,32 +790,99 @@ unsigned char buf[4096];
           //vita2d_draw_texture(tileset, 0, y);//y
 			//need to figure out draw second y column
 					vita2d_draw_texture(blocks[1], column[7], y);//0 + grid_cell_size
-					columns.y = y;
-					//box.y = column[8];
-					//columns.x = column[8];
-          		vita2d_draw_texture(blocks[1], column[16], y);//0 + grid_cell_size
+					//columns.y = y;
+					
+          		vita2d_draw_texture(blocks[1], column[16], y);//16
+                    columns.y = y;
 
 					 if(isFacingLeft){
-                      columns.x = column[8];
+                      columns.x = column[7];//8
 
+			 if(check_collision(goal,columns))
+            {
+            	goal.x += grid_cell_size;
+               if(check_collision(player,goal))
+				 {
+
+                 player.y += grid_cell_size;
+				}
+
+            }
+            if(check_collision(goal,box2))
+            {
+            	goal.x += grid_cell_size;
+            	if(check_collision(player,goal))
+				 {
+
+                 player.y += grid_cell_size;
+				}
+
+            }
+
+            //box2
+            if(check_collision(box2,columns))
+            {
+            	box2.x += grid_cell_size;
+               if(check_collision(player,box2))
+				 {
+
+                 player.y += grid_cell_size;
+				}
+
+            }
+
+           //box2
 			 if(check_collision(player,columns))
 				 {
 
                  player.x += grid_cell_size;
+
 				}
 			 }
 
              if(isFacingRight){
                 //make this equal to all columns
                 
-                columns.x = column[15];//15
+                columns.x = column[16];//15
               
-             
-                
-			 if(check_collision(player,columns))
+             if(check_collision(goal,columns))
+            {
+            	goal.x -= grid_cell_size;
+               if(check_collision(player,goal))
 				 {
 
                  player.x -= grid_cell_size;
+				}
+
+            }
+           if(check_collision(goal,box2))
+            {
+            	goal.x -= grid_cell_size;
+            	if(check_collision(player,goal))
+				 {
+
+                 player.y += grid_cell_size;
+				}
+
+            }
+
+                 //box2
+              if(check_collision(box2,columns))
+            {
+            	box2.x -= grid_cell_size;
+               if(check_collision(player,box2))
+				 {
+
+                 player.y += grid_cell_size;
+				}
+
+            }
+
+			 //box2 
+			 if(check_collision(player,columns))
+				 {
+
+                 player.x -= grid_cell_size;//-=
 				}
 			 }
 
@@ -657,25 +890,707 @@ unsigned char buf[4096];
           vita2d_draw_line(0, y, window_width, y, RGBA8(255, 0, 255, 255));
 		}
          
+        if(check_collision(goal,targe) && check_collision(box2,target2))
+        {
+        	//vita2d_pgf_draw_text(level_List, 0, 0, RGBA8(0, 255, 0, 255), 1.0f, "LEVEL COMPLETE!");//700,30
+            break;
+        }
+
+
+
+        for(port = 0; port < SCE_TOUCH_PORT_MAX_NUM; port++){
+			sceTouchPeek(port, &touch[port], 1);
+			printf("%s",((const char*[]){"FRONT","BACK "})[port]);
+			/* print every touch coordinates on that surface */
+			for(i = 0; i < SCE_TOUCH_MAX_REPORT; i++)
+				printf("\e[9%im%4i:%-4i ", (i < touch[port].reportNum)? 7:0,
+				       touch[port].report[i].x,touch[port].report[i].y);
+			    
+			printf("\n");
+           touchCollider.x = touch[SCE_TOUCH_PORT_FRONT].report[i].x; //touch[port].report[i].x;
+           touchCollider.y = touch[SCE_TOUCH_PORT_FRONT].report[i].y;//touch[port].report[i].y;
+           
+
+
+         //vita2d_pgf_draw_text(pgf, touch[port].report[i].x, touch[port].report[i].y + 50, RGBA8(0, 255, 0, 255), 1.0f,"HELLO");
+
+		}
+		
+    }//end of if
+     if(currentState == STATE_PLAY && currentLevel == LEVEL_ONE)
+          {
+              
+            if (pad.buttons & SCE_CTRL_CIRCLE)
+		{
+            currentState = STATE_LEVEL_MENU;
+            
+
+		}
+
+              //break;
+              for (int x = 0; x < 1 + grid_width * grid_cell_size;
+             x += grid_cell_size) {
+         
+			 //adjust these tiles for level layout like add something to x
+			 //level 1 should be an easy level
+           
+			 //vita2d_draw_texture(tileset[0], x, column[4]); //+x 4
+
+             //with this i can draw the collision boxes anywhere on the level area
+			// vita2d_draw_texture(tileset[1], x, column[5]);
+			// vita2d_draw_texture(tileset[2], x, column[6]);
+			 vita2d_draw_texture(tileset[3], x, column[7]);
+			 vita2d_draw_texture(tileset[4], x, column[8]);
+			 vita2d_draw_texture(tileset[5], x, column[9]);//point
+			
+			 vita2d_draw_texture(blocks[0], x , column[10]);//10
+			 vita2d_draw_texture(blocks[0], x, column[6]);//3
+             //vita2d_draw_texture(blocks[1], 2 + grid_cell_size, column[11]);
+			 columns.x = x; //+ grid_cell_size;
+             
+			 if(isFacingUp){
+            //test this
+			 	columns.y = column[5];//2
+            if(check_collision(goal,columns))
+            {
+            	goal.y += grid_cell_size;
+               if(check_collision(player,goal))
+				 {
+
+                 player.y += grid_cell_size;
+				}
+
+            }
+            if(check_collision(goal,box2))
+            {
+            	goal.y += grid_cell_size;
+            	if(check_collision(player,goal))
+				 {
+
+                 player.y += grid_cell_size;
+				}
+
+            }
+			 //box2
+             if(check_collision(box2,columns))
+            {
+            	box2.y += grid_cell_size;
+               if(check_collision(player,box2))
+				 {
+
+                 player.y += grid_cell_size;
+				}
+
+            }
+
+            //box2
+			 if(check_collision(player,columns))
+				 {
+
+                 player.y += grid_cell_size;
+				}
+			 }
+
+
+             if(isFacingDown){
+
+             /*if(check_collision(player,box)){
+             	player.y -= grid_cell_size;
+             }*/
+             	columns.y = column[10];
+              if(check_collision(goal,columns))
+            {
+            	goal.y -= grid_cell_size;
+               if(check_collision(player,goal))
+				 {
+
+                 player.y -= grid_cell_size;
+				}
+
+            }
+            //box2
+            if(check_collision(box2,columns))
+            {
+            	box2.y -= grid_cell_size;
+               if(check_collision(player,box2))
+				 {
+
+                 player.y -= grid_cell_size;
+				}
+
+            }
+            if(check_collision(goal,box2))
+            {
+            	goal.y -= grid_cell_size;
+            	if(check_collision(player,goal))
+				 {
+
+                 player.y -= grid_cell_size;
+				}
+
+            }
+
+
+            //box2
+			 if(check_collision(player,columns))
+				 {
+
+                 player.y -= grid_cell_size;
+				}
+			 }
+
+			 //vita2d_draw_texture(zombie, box.x, box.y);
+			  vita2d_draw_texture_part(player.image[0], player.x , player.y , gSpriteClips[frame].x, gSpriteClips[frame].y, gSpriteClips[frame].w,gSpriteClips[frame].h);
+
+		 ++frame;
+             //sceKernelDelayThread(100000);//delay for one second 100000
+
+                //Cycle animation need to slow it down
+                if( frame / 1 >= WALKING_ANIMATION_FRAMES )
+                {
+
+					frame = 0;//0
+                }
+
+			 vita2d_draw_line(x, 0, x, window_height, RGBA8(255, 0, 255, 255));
+
+
+        }
+
+           //test            //1
+        for (int y = 0; y < 1 + grid_height * grid_cell_size;
+             y += grid_cell_size) {
+            //SDL_RenderDrawLine(renderer, 0, y, window_width, y);
+
+          //vita2d_draw_texture(tileset, 0, y);//y
+			//need to figure out draw second y column
+					vita2d_draw_texture(blocks[1], column[7], y);//0 + grid_cell_size
+					//columns.y = y;
+					
+          		vita2d_draw_texture(blocks[1], column[16], y);//16
+                    columns.y = y;
+
+					 if(isFacingLeft){
+                      columns.x = column[7];//8
+
+			 if(check_collision(goal,columns))
+            {
+            	goal.x += grid_cell_size;
+               if(check_collision(player,goal))
+				 {
+
+                 player.y += grid_cell_size;
+				}
+
+            }
+            if(check_collision(goal,box2))
+            {
+            	goal.x += grid_cell_size;
+            	if(check_collision(player,goal))
+				 {
+
+                 player.y += grid_cell_size;
+				}
+
+            }
+
+            //box2
+            if(check_collision(box2,columns))
+            {
+            	box2.x += grid_cell_size;
+               if(check_collision(player,box2))
+				 {
+
+                 player.y += grid_cell_size;
+				}
+
+            }
+
+           //box2
+			 if(check_collision(player,columns))
+				 {
+
+                 player.x += grid_cell_size;
+
+				}
+			 }
+
+             if(isFacingRight){
+                //make this equal to all columns
+                
+                columns.x = column[16];//15
+              
+             if(check_collision(goal,columns))
+            {
+            	goal.x -= grid_cell_size;
+               if(check_collision(player,goal))
+				 {
+
+                 player.x -= grid_cell_size;
+				}
+
+            }
+           if(check_collision(goal,box2))
+            {
+            	goal.x -= grid_cell_size;
+            	if(check_collision(player,goal))
+				 {
+
+                 player.y += grid_cell_size;
+				}
+
+            }
+
+                 //box2
+              if(check_collision(box2,columns))
+            {
+            	box2.x -= grid_cell_size;
+               if(check_collision(player,box2))
+				 {
+
+                 player.y += grid_cell_size;
+				}
+
+            }
+
+			 //box2 
+			 if(check_collision(player,columns))
+				 {
+
+                 player.x -= grid_cell_size;//-=
+				}
+			 }
+
+
+          vita2d_draw_line(0, y, window_width, y, RGBA8(255, 0, 255, 255));
+		}
+         
+        if(check_collision(goal,targe) && check_collision(box2,target2))
+        {
+        	//vita2d_pgf_draw_text(level_List, 0, 0, RGBA8(0, 255, 0, 255), 1.0f, "LEVEL COMPLETE!");//700,30
+            break;
+        }
+
+     
+
+
+          }
+        if(currentState == STATE_PLAY && currentLevel == LEVEL_TWO)
+          {
+            // break;
+                if (pad.buttons & SCE_CTRL_CIRCLE)
+		{
+            currentState = STATE_LEVEL_MENU;
+            
+
+		}
+
+              //break;
+              for (int x = 0; x < 1 + grid_width * grid_cell_size;
+             x += grid_cell_size) {
+         
+			 //adjust these tiles for level layout like add something to x
+			 //level 1 should be an easy level
+           
+			 //vita2d_draw_texture(tileset[0], x, column[4]); //+x 4
+
+             //with this i can draw the collision boxes anywhere on the level area
+			
+			 //vita2d_draw_texture(tileset[3], x, column[7]);
+			 //vita2d_draw_texture(tileset[4], x, column[8]);
+			 //vita2d_draw_texture(tileset[5], x, column[9]);//point
+			
+			 vita2d_draw_texture(blocks[0], x, column[11]);//10
+			for(int b = 3; b<5; b++){
+			 vita2d_draw_texture(blocks[0], column[b], column[8]);//3
+			 columns.x = b;
+			}
+			for(int i =5;i<7;i++)
+			{
+				vita2d_draw_texture(blocks[0], column[i], column[6]);//3
+			}
+
+             //vita2d_draw_texture(blocks[1], 2 + grid_cell_size, column[11]);
+			 columns.x = x; //+ grid_cell_size;
+             
+			 if(isFacingUp){
+            //test this
+			 	//columns.y = column[7];//0
+			 	if(check_collision(player,lvl3Columns[0]))
+			 	{
+			 		player.y += grid_cell_size;
+			 	}
+               if(check_collision(player,lvl3Columns[1]))
+			 	{
+			 		player.y += grid_cell_size;
+			 	}
+			 	if(check_collision(player,lvl3Columns[4]))
+			 	{
+			 		player.y += grid_cell_size;
+			 	}
+			 	if(check_collision(player,lvl3Columns[5]))
+			 	{
+			 		player.y += grid_cell_size;
+			 	}
+
+            if(check_collision(goal,columns))
+            {
+            	goal.y += grid_cell_size;
+               if(check_collision(player,goal))
+				 {
+
+                 player.y += grid_cell_size;
+				}
+
+            }
+            if(check_collision(goal,box2))
+            {
+            	goal.y += grid_cell_size;
+            	if(check_collision(player,goal))
+				 {
+
+                 player.y += grid_cell_size;
+				}
+
+            }
+			 //box2
+             if(check_collision(box2,columns))
+            {
+            	box2.y += grid_cell_size;
+               if(check_collision(player,box2))
+				 {
+
+                 player.y += grid_cell_size;
+				}
+
+            }
+
+            //box2
+			 if(check_collision(player,columns))
+				 {
+
+                 player.y += grid_cell_size;
+				}
+			 }
+
+
+             if(isFacingDown){
+
+             /*if(check_collision(player,box)){
+             	player.y -= grid_cell_size;
+             }*/
+             	columns.y = column[11];
+              if(check_collision(goal,columns))
+            {
+            	goal.y -= grid_cell_size;
+               if(check_collision(player,goal))
+				 {
+
+                 player.y -= grid_cell_size;
+				}
+
+            }
+            //box2
+            if(check_collision(box2,columns))
+            {
+            	box2.y -= grid_cell_size;
+               if(check_collision(player,box2))
+				 {
+
+                 player.y -= grid_cell_size;
+				}
+
+            }
+            if(check_collision(goal,box2))
+            {
+            	goal.y -= grid_cell_size;
+            	if(check_collision(player,goal))
+				 {
+
+                 player.y -= grid_cell_size;
+				}
+
+            }
+
+
+            //box2
+			 if(check_collision(player,columns))
+				 {
+
+                 player.y -= grid_cell_size;
+				}
+			 }
+
+			 //vita2d_draw_texture(zombie, box.x, box.y);
+			  vita2d_draw_texture_part(player.image[0], player.x , player.y , gSpriteClips[frame].x, gSpriteClips[frame].y, gSpriteClips[frame].w,gSpriteClips[frame].h);
+
+		 ++frame;
+             //sceKernelDelayThread(100000);//delay for one second 100000
+
+                //Cycle animation need to slow it down
+                if( frame / 1 >= WALKING_ANIMATION_FRAMES )
+                {
+
+					frame = 0;//0
+                }
+
+			 vita2d_draw_line(x, 0, x, window_height, RGBA8(255, 0, 255, 255));
+
+
+        }
+
+           //test            //1
+        for (int y = 0; y < 1 + grid_height * grid_cell_size;
+             y += grid_cell_size) {
+            //SDL_RenderDrawLine(renderer, 0, y, window_width, y);
+
+          //vita2d_draw_texture(tileset, 0, y);//y
+			//need to figure out draw second y column
+					vita2d_draw_texture(blocks[1], column[2], y);//7
+					//columns.y = y;
+				//need to setup collision detection for this
+            for(int i = 6; i<9; i++){
+			 vita2d_draw_texture(blocks[0], column[4], column[i]);//3
+			// columns.x = b;
+			}
+
+					
+          		vita2d_draw_texture(blocks[1], column[22], y);//16
+                    columns.y = y;
+
+					 if(isFacingLeft){
+                      columns.x = column[2];//8
+
+			if(check_collision(player,lvl3Columns[5]))
+			 	{
+			 		player.x += grid_cell_size;
+			 	}
+
+
+			if(check_collision(player,lvl3Columns[3]))
+			 {
+			 	player.x += grid_cell_size;
+			 }
+
+
+			 if(check_collision(player,lvl3Columns[2]))
+			 {
+			 	player.x += grid_cell_size;
+			 }
+
+			 if(check_collision(player,lvl3Columns[1]))
+			 	{
+			 		player.x += grid_cell_size;
+			 	}
+
+
+
+			 if(check_collision(goal,columns))
+            {
+            	goal.x += grid_cell_size;
+               if(check_collision(player,goal))
+				 {
+
+                 player.y += grid_cell_size;
+				}
+
+            }
+            if(check_collision(goal,box2))
+            {
+            	goal.x += grid_cell_size;
+            	if(check_collision(player,goal))
+				 {
+
+                 player.y += grid_cell_size;
+				}
+
+            }
+
+            //box2
+            if(check_collision(box2,columns))
+            {
+            	box2.x += grid_cell_size;
+               if(check_collision(player,box2))
+				 {
+
+                 player.y += grid_cell_size;
+				}
+
+            }
+
+           //box2
+			 if(check_collision(player,columns))
+				 {
+
+                 player.x += grid_cell_size;
+
+				}
+			 }
+
+             if(isFacingRight){
+                //make this equal to all columns
+                
+                columns.x = column[22];//15
+              
+             if(check_collision(goal,columns))
+            {
+            	goal.x -= grid_cell_size;
+               if(check_collision(player,goal))
+				 {
+
+                 player.x -= grid_cell_size;
+				}
+
+            }
+           if(check_collision(goal,box2))
+            {
+            	goal.x -= grid_cell_size;
+            	if(check_collision(player,goal))
+				 {
+
+                 player.y += grid_cell_size;
+				}
+
+            }
+
+                 //box2
+              if(check_collision(box2,columns))
+            {
+            	box2.x -= grid_cell_size;
+               if(check_collision(player,box2))
+				 {
+
+                 player.y += grid_cell_size;
+				}
+
+            }
+
+			 //box2 
+			 if(check_collision(player,columns))
+				 {
+
+                 player.x -= grid_cell_size;//-=
+				}
+			 }
+
+
+          vita2d_draw_line(0, y, window_width, y, RGBA8(255, 0, 255, 255));
+		}
+         
+        if(check_collision(goal,targe) && check_collision(box2,target2))
+        {
+        	//vita2d_pgf_draw_text(level_List, 0, 0, RGBA8(0, 255, 0, 255), 1.0f, "LEVEL COMPLETE!");//700,30
+            break;
+        }
+
+
+
+
+
+
+          }	
+
+		/*if(touch[SCE_TOUCH_PORT_FRONT].report[0].x  <= column[15] && touch[SCE_TOUCH_PORT_FRONT].report[0].y <= column[20])
+		{
+            break;
+			
+
+		}*/
+		//touchCollider.x = touch[SCE_TOUCH_PORT_FRONT].report[0].x
+          // touchCollider.y = touch[SCE_TOUCH_PORT_FRONT].report[0].y
+        
+
+         if ( touch[SCE_TOUCH_PORT_FRONT].reportNum == 1)
+         {
+         	                                 //change this to icon
+         	if(check_collision(touchCollider, icons))
+         	{
+              vita2d_pgf_draw_text(pgf, 20, 20, RGBA8(0, 255, 0, 255), 1.0f,"HELLO");
+         	}
+         	
+           //vita2d_pgf_draw_text(pgf, 20, 20, RGBA8(0, 255, 0, 255), 1.0f,"HELLO");
+           
+         }
+		/*if ( (touch[SCE_TOUCH_PORT_FRONT].reportNum == 1)
+		  && (touch_old[SCE_TOUCH_PORT_FRONT].reportNum == 1)
+		  && (touch[SCE_TOUCH_PORT_FRONT].report[0].y >= 1000)
+		  && (touch_old[SCE_TOUCH_PORT_FRONT].report[0].y < 1000)){
+
+		}*/
+
         //topA
 		//vita2d_draw_texture(blocks[1], column[15], column[9]);
+        vita2d_draw_texture(target[0], targe.x,targe.y);//box.x, box.y
+        vita2d_draw_texture(target[1], target2.x, target2.y);
+		
+
         
+
         vita2d_draw_texture(zombie[0], goal.x, goal.y);//column[14], box.y
-        vita2d_draw_texture(zombie[1], column[15], column[7]);
+        vita2d_draw_texture(zombie[1], box2.x, box2.y);
 
 
         
-         vita2d_draw_texture(target[0], column[14], column[9]);//box.x, box.y
+         //vita2d_draw_texture(target[0], column[14], column[9]);//box.x, box.y
         //vita2d_draw_texture(target[1], column[15], column[9]);
 		
 
-          //vita2d_draw_texture(cursor,options[currentIndex].x*8-12, options[currentIndex].y*8);
-         //clip bg when start is pressed
-      vita2d_draw_texture_part(menu_BG, 100, 0, 0.0f, 0.0f, menu_Bg.w,menu_Bg.h);
-      //vita2d_draw_texture(menu_BG,100, 0);
-		vita2d_draw_texture(cursor,gfx_Cursor.x, gfx_Cursor.y);
-      menuLoop();
-  
+         //drawMenu();
+        if(currentState == STATE_MENU)
+		{
+			drawMenu();
+
+
+		}
+        if(currentState == STATE_LEVEL_MENU)
+		{   //hide menu
+			menu_Bg.w = 0.0f;
+             menu_Bg.h = 0.0f;
+             gfx_Cursor.w = 0.0f;
+             gfx_Cursor.h = 0.0f;
+
+             hideText(pgf);
+             drawLevelSelect();
+            level_Bg.w = 1190.0f;
+           level_Bg.h = 740.f;
+    //level_cursor.x = levelList[currentIndex].x;
+    //level_cursor.y = levelList[currentIndex].y;//15
+           level_cursor.w = 91;
+          level_cursor.h = 94;
+          
+          if(pad.buttons & SCE_CTRL_LEFT)
+           {
+           	selectorMoveLeft();
+           }
+           if(pad.buttons & SCE_CTRL_RIGHT)
+           {
+           selectorMoveRight();
+           }
+
+
+             if (pad.buttons & SCE_CTRL_CROSS)//CIRCLE
+		{
+             //sceKernelDelayThread(3000000);
+             Select_Level(currentSelection);
+		}
+           if (pad.buttons & SCE_CTRL_LTRIGGER)
+		{   //show menu
+            currentState = STATE_MENU;
+            gfx_Cursor.w = 8.0f;
+            gfx_Cursor.h = 8.0f;
+            menu_Bg.w = 1190.0f;
+            menu_Bg.h = 740.0f;
+            showText();
+
+		  }
+
+		}
+
+
+
+
+
+
        // vita2d_clear_screen();
 		vita2d_end_drawing();
 		vita2d_swap_buffers();
@@ -684,17 +1599,13 @@ unsigned char buf[4096];
 
 	}
 
-	/*
-	 * vita2d_fini() waits until the GPU has finished rendering,
-	 * then we can free the assets freely.
-	 */
-
+	
 	StopAudio(&_audio);
 	TerminateAudio(&_audio);
 
 	vita2d_fini();
 	vita2d_free_texture(player.image[0]);
-	vita2d_free_texture(bullet[0]);
+	
 	vita2d_free_texture(zombie);
 	vita2d_free_texture(tileset[0]);
 	vita2d_free_pgf(pgf);
@@ -704,123 +1615,13 @@ unsigned char buf[4096];
 	return 0;
 }
 void initPlayer(){
-	 //player.x = 940/2;
-	// player.y = 544/2;
-	//struct Entity *player;
-//player->image = vita2d_load_PNG_buffer(&_binary_image_png_start);
-    //int w = vita2d_texture_get_width(player);
-	//set animation with this                                     texture possiton
+	                                 
 	vita2d_draw_texture_part(player.image[0], player.x, player.y, 0.0f, 0.0f, player.w,player.h);//27.0f 33.0f
 
-
-    
-	//vita2d_draw_texture(player.image[0], player.x, player.y);
-
-//vita2d_create_empty_texture_rendertarget(player.w, player.h, SceGxmTextureFormat format);
-//vita2d_free_texture(image);
-}
-int vita2d_texture_set_width(const vita2d_texture *texture,int w,int h){
-
-
-}
-
-void fireBullet()
-{
-	struct Entity *bullet;
-	bullet = malloc(sizeof(struct Entity));
-	memset(bullet,0,sizeof(struct Entity));
-    bulPosX = player.x;
-	bulPosY = player.y;
-    bulPosY -= 100;
-
-}
-float getTexturePosition(vita2d_texture *entity)
-{
-   struct Entity obj;
-   //obj.image = entity;
-   //return obj.y;
-
-}
-void pickStart(){
-    vita2d_start_drawing();
-	vita2d_clear_screen();
-
-}
-void Select(int Option){
-    switch (Option)
-    {
-    case 0:{
-        //start game loop
-        //currentState = STATE_PLAY;
-        pickStart();
-        break;
-    }
-    case 1:{
-        //pickOptions();
-        break;
-    }
-    case 2:{
-        //pickExit();
-        break;
-    }
-    
-    default:
-        break;
-    }
-}
-//test
-void menuLoop()
-{
-    //SPR_reset();
-
-    //SPR_update();
-    //PAL_setColors(0, (u16*) palette_black, 64, CPU);
-    //JOY_setEventHandler(joyEvent);
-    //SYS_setVBlankCallback(vblank);
-  //paused = TRUE;
-  int i = 0;
-for(i; i < NUM_OPTIONS; i++){
-    Option o = options[i];
-    //VDP_drawText(o.label,o.x,o.y);
-    vita2d_pgf_draw_text(pgf, o.x, o.y, RGBA8(0, 255, 0, 255), 1.0f, o.label);//700,30
-    
-}
-   //vita2d_draw_texture(cursor,options[currentIndex].x*8-12, options[currentIndex].y*8);
-   //vita2d_draw_texture(menu_BG,940/2, 544/2);
-   //vita2d_draw_texture(cursor,options[currentIndex].x*8-12, options[currentIndex].y*8);
-   //vita2d_draw_texture(menu_BG,740, 740);
-
-   //cursor = SPR_addSprite(&gfx_cursor, 0, 0, 0);
-   //updateCursorPosition();
-}
-
-void updateCursorPosition()
-{
- 
- //SPR_setPosition(cursor, options[currentIndex].x*8-12, options[currentIndex].y*8);
-
-}
-void cursorUp()
-{     
-     if(currentIndex > 0){
-        currentIndex--;
-        gfx_Cursor.y = options[currentIndex].y-10;
-        //updateCursorPosition();
-    }
-}
-void moveDown(){
-    
-    if(currentIndex < NUM_OPTIONS-1){
-        currentIndex++;
-       gfx_Cursor.y = options[currentIndex].y-10;
-        //updateCursorPosition();
-    }
 }
 
 
 
-
-//test
 bool check_collision( struct Entity A, struct Entity B )
 {
 //The sides of the rectangles
@@ -837,7 +1638,7 @@ bottomA = A.y + A.h;
 
 //Calculate the sides of rect B
 leftB = B.x;
-rightB = B.x + B.w;//B.w
+rightB = B.x + B.w;//+ B.w
 topB = B.y;
 bottomB = B.y + B.h;
 
@@ -852,42 +1653,21 @@ if( topA >= bottomB )
     return false;
 }
 
-if( rightA <= leftB )
+if( rightA <= leftB ) //right <= left
 {
   //  player.x -= player.dx;
 	return false;
 }
 
-if( leftA >= rightB )//>
+if( leftA >= rightB )//left >= right
 {
-    return false;
+    return false;//false
 }
 
 //If none of the sides from A are outside B
 return true;
 }
 
-static int
-check_output (const float * data_in, unsigned len, float allowable)
-{
-  float max_abs = 0.0 ;
-  unsigned k ;
-
-  for (k = 0 ; k < len ; k++) {
-    float temp = fabs (data_in [k]);
-    max_abs = MAX (max_abs, temp);
-  }
-
-  if (max_abs < 0.95-allowable) {
-    printf ("Error : max_abs (%f) too small.\n", max_abs);
-    return 1 ;
-  } else if (max_abs > .95+allowable) {
-    printf ("Error : max_abs (%f) too big.\n", max_abs);
-    return 1 ;
-  }
-
-  return 0 ;
-}
 
 
 
